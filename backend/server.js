@@ -1,8 +1,8 @@
 const express = require('express');
 const cors = require('cors');
-const { exec } = require('child_process');
 const path = require('path');
 const fs = require('fs');
+const ytdlp = require('yt-dlp-exec');
 
 const app = express();
 const port = process.env.PORT || 3001;
@@ -41,47 +41,44 @@ app.post('/convert', async (req, res) => {
     // Gerar timestamp único
     const timestamp = Date.now();
     
-    // Configurar comando para download e conversão
+    // Configurar opções para download e conversão
     const outputPath = path.join(downloadsDir, `%(title)s_${timestamp}.mp3`);
-    const command = `yt-dlp -x --audio-format mp3 --audio-quality 0 --prefer-ffmpeg -o "${outputPath}" "${url}"`;
-
-    console.log('Executando comando:', command);
-
-    // Executar o comando
-    exec(command, (error, stdout, stderr) => {
-      console.log('stdout:', stdout);
-      console.log('stderr:', stderr);
-
-      if (error) {
-        console.error('Erro:', error);
-        return res.status(500).json({ error: 'Erro ao processar o vídeo: ' + error.message });
-      }
-
-      // Procurar o arquivo mais recente na pasta de downloads
-      const files = fs.readdirSync(downloadsDir);
-      const mp3Files = files.filter(file => file.endsWith('.mp3'));
-      
-      if (mp3Files.length > 0) {
-        // Ordenar por data de modificação (mais recente primeiro)
-        const sortedFiles = mp3Files.sort((a, b) => {
-          const statA = fs.statSync(path.join(downloadsDir, a));
-          const statB = fs.statSync(path.join(downloadsDir, b));
-          return statB.mtime.getTime() - statA.mtime.getTime();
-        });
-
-        const filename = sortedFiles[0];
-        console.log('Arquivo encontrado:', filename);
-        
-        res.json({ 
-          success: true, 
-          message: 'Conversão concluída com sucesso!',
-          file: filename
-        });
-      } else {
-        console.error('Nenhum arquivo MP3 encontrado');
-        res.status(500).json({ error: 'Nenhum arquivo MP3 foi gerado' });
-      }
+    
+    // Usar yt-dlp-exec para download e conversão
+    const result = await ytdlp(url, {
+      extractAudio: true,
+      audioFormat: 'mp3',
+      audioQuality: 0,
+      output: outputPath,
+      preferFfmpeg: true
     });
+
+    console.log('Download concluído:', result);
+
+    // Procurar o arquivo mais recente na pasta de downloads
+    const files = fs.readdirSync(downloadsDir);
+    const mp3Files = files.filter(file => file.endsWith('.mp3'));
+    
+    if (mp3Files.length > 0) {
+      // Ordenar por data de modificação (mais recente primeiro)
+      const sortedFiles = mp3Files.sort((a, b) => {
+        const statA = fs.statSync(path.join(downloadsDir, a));
+        const statB = fs.statSync(path.join(downloadsDir, b));
+        return statB.mtime.getTime() - statA.mtime.getTime();
+      });
+
+      const filename = sortedFiles[0];
+      console.log('Arquivo encontrado:', filename);
+      
+      res.json({ 
+        success: true, 
+        message: 'Conversão concluída com sucesso!',
+        file: filename
+      });
+    } else {
+      console.error('Nenhum arquivo MP3 encontrado');
+      res.status(500).json({ error: 'Nenhum arquivo MP3 foi gerado' });
+    }
 
   } catch (err) {
     console.error('Erro:', err);
